@@ -36,7 +36,8 @@ class DETR(nn.Module):
         hidden_dim = transformer.d_model
         self.class_embed = nn.Linear(hidden_dim, num_classes + 1)
         self.bbox_embed = MLP(hidden_dim, hidden_dim, 4, 3)
-        self.query_embed = nn.Embedding(num_queries, hidden_dim)
+        # self.query_embed = nn.Embedding(num_queries, hidden_dim)
+        self.query_embed = nn.Linear(300, hidden_dim)
         self.input_proj = nn.Conv2d(backbone.num_channels, hidden_dim, kernel_size=1)
         self.backbone = backbone
         self.aux_loss = aux_loss
@@ -62,7 +63,8 @@ class DETR(nn.Module):
 
         src, mask = features[-1].decompose()
         assert mask is not None
-        hs = self.transformer(self.input_proj(src), mask, self.query_embed.weight, pos[-1])[0]
+        query = self.query_emb(word_emb)
+        hs = self.transformer(self.input_proj(src), mask, query, pos[-1])[0]
 
         outputs_class = self.class_embed(hs)
         outputs_coord = self.bbox_embed(hs).sigmoid()
@@ -310,11 +312,12 @@ def build(args):
     # you should pass `num_classes` to be 2 (max_obj_id + 1).
     # For more details on this, check the following discussion
     # https://github.com/facebookresearch/detr/issues/108#issuecomment-650269223
-    num_classes = 20 if args.dataset_file != 'coco' else 91
-    if args.dataset_file == "coco_panoptic":
-        # for panoptic, we just add a num_classes that is large enough to hold
-        # max_obj_id + 1, but the exact value doesn't really matter
-        num_classes = 250
+#    num_classes = 20 if args.dataset_file != 'coco' else 91
+#    if args.dataset_file == "coco_panoptic":
+#        # for panoptic, we just add a num_classes that is large enough to hold
+#        # max_obj_id + 1, but the exact value doesn't really matter
+#        num_classes = 250
+    num_classes = 1
     device = torch.device(args.device)
 
     backbone = build_backbone(args)
