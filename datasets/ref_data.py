@@ -123,7 +123,7 @@ class ImgQuDataset(Dataset):
             'qvec': torch.from_numpy(q_chosen_emb_vecs),
             'qlens': torch.tensor(qlen),
             'boxes': torch.from_numpy(target).float(),
-            'labels': torch.tensor([1], dtype=torch.int64)
+            'labels': torch.tensor([0], dtype=torch.int64)
             'orig_size': torch.tensor([h, w]),
             'size': torch.tensor([h, w]),
             'sents': sents,
