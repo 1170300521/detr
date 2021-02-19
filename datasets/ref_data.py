@@ -3,7 +3,6 @@ from torch.utils.data.distributed import DistributedSampler
 from torchvision.transforms import functional as F
 import torchvision.transforms as T
 import pandas as pd
-from utils import DataWrap
 import numpy as np
 from pathlib import Path
 import torch
@@ -20,12 +19,12 @@ from torchvision import transforms
 import spacy
 import cv2
 
-from utils.misc import nested_tensor_from_tensor_list
+from util.misc import nested_tensor_from_tensor_list
 # from extended_config import cfg as conf
 
 
-nlp = spacy.load('en_vectors_web_lg')
-#nlp = spacy.load('en_core_web_md')
+#nlp = spacy.load('en_vectors_web_lg')
+nlp = spacy.load('en_core_web_md')
 
 
 class NewDistributedSampler(DistributedSampler):
@@ -123,7 +122,7 @@ class ImgQuDataset(Dataset):
             'qvec': torch.from_numpy(q_chosen_emb_vecs),
             'qlens': torch.tensor(qlen),
             'boxes': torch.from_numpy(target).float(),
-            'labels': torch.tensor([0], dtype=torch.int64)
+            'labels': torch.tensor([0], dtype=torch.int64),
             'orig_size': torch.tensor([h, w]),
             'size': torch.tensor([h, w]),
             'sents': sents,
@@ -188,7 +187,7 @@ def collater(batch):
     for k in batch[0]:
         if k in ['sents', 'img']:
             out_dict[k] = [b[k] for b in batch]
-        else if k != 'img':
+        elif k != 'img':
             out_dict[k] = torch.stack([b[k] for b in batch]).float()
     out_dict['img'] = nested_tensor_from_tensor_list(out_dict['img'])
     # out_dict['qvec'] = out_dict['qvec'][:, :max_qlen]
@@ -229,43 +228,45 @@ def make_data_sampler(dataset, shuffle, distributed):
 
 def get_data(cfg, ds_info):
     # Get which dataset to use
-    ds_name = cfg.ds_to_use
+    ds_name = cfg.ds_name
 
     # Training file
     trn_csv_file = ds_info[ds_name]['trn_csv_file']
     trn_ds = ImgQuDataset(cfg=cfg, csv_file=trn_csv_file,
                           ds_name=ds_name, split_type='train')
-    trn_dl = get_dataloader(cfg, trn_ds, is_train=True)
+    #trn_dl = get_dataloader(cfg, trn_ds, is_train=True)
 
     # Validation file
     val_csv_file = ds_info[ds_name]['val_csv_file']
     val_ds = ImgQuDataset(cfg=cfg, csv_file=val_csv_file,
                           ds_name=ds_name, split_type='valid')
-    val_dl = get_dataloader(cfg, val_ds, is_train=False)
+    #val_dl = get_dataloader(cfg, val_ds, is_train=False)
 
     if ds_name == 'refcoco' or ds_name == 'refcoco+':
         test_csv_filea = ds_info[ds_name]['test_csv_fileA']
         test_dsa = ImgQuDataset(cfg=cfg, csv_file=test_csv_filea,
                             ds_name=ds_name, split_type='valid')
-        test_dla = get_dataloader(cfg, test_dsa, is_train=False)
+        #test_dla = get_dataloader(cfg, test_dsa, is_train=False)
         test_csv_fileb = ds_info[ds_name]['test_csv_fileB']
         test_dsb = ImgQuDataset(cfg=cfg, csv_file=test_csv_fileb,
                             ds_name=ds_name, split_type='valid')
-        test_dlb = get_dataloader(cfg, test_dsb, is_train=False)
-        test_dl={'testA': test_dla, 'testB': test_dlb}
+        #test_dlb = get_dataloader(cfg, test_dsb, is_train=False)
+        #test_dl={'testA': test_dla, 'testB': test_dlb}
+        test_ds = {'testA': test_dsa, 'testB': test_dsb}
     else :
         test_csv_file = ds_info[ds_name]['test_csv_file']
         test_ds = ImgQuDataset(cfg=cfg, csv_file=test_csv_file,
                             ds_name=ds_name, split_type='valid')
-        test_dl = get_dataloader(cfg, test_ds, is_train=False)
-        test_dl = {'test0': test_dl}
+        #test_dl = get_dataloader(cfg, test_ds, is_train=False)
+        #test_dl = {'test0': test_dl}
+        test_ds = {'test0': test_ds}
 
 #    data = DataWrap(path=cfg.tmp_path, train_dl=trn_dl, valid_dl=val_dl,
 #                    test_dl=test_dl)
     return {
-        "train": trn_dl,
-        "val": val_dl,
-        "test": test_dl
+        "train": trn_ds,
+        "val": val_ds,
+        "test": test_ds
     }
 
 

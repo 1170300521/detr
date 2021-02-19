@@ -150,11 +150,11 @@ def main(args):
 
 #    dataset_train = build_dataset(image_set='train', args=args)
 #    dataset_val = build_dataset(image_set='val', args=args)
-    ds_info = CN(json.load(open(args.ds_info)))
-    dataset = get_data(args, ds_info)
+    args.ds_info = CN(json.load(open(args.ds_info)))
+    dataset = get_data(args, args.ds_info)
     if args.distributed:
-        sampler_train = DistributedSampler(dataset_train)
-        sampler_val = DistributedSampler(dataset_val, shuffle=False)
+        sampler_train = DistributedSampler(dataset['train'])
+        sampler_val = DistributedSampler(dataset['val'], shuffle=False)
     else:
         sampler_train = torch.utils.data.RandomSampler(dataset_train)
         sampler_val = torch.utils.data.SequentialSampler(dataset_val)
@@ -253,6 +253,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser('DETR training and evaluation script', parents=[get_args_parser()])
     args = parser.parse_args()
     args.output_dir = os.path.join(args.output_dir, args.ds_name, args.lab_name)
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
+    if not os.path.exists(args.output_dir):
+        os.makedirs(args.output_dir)
     main(args)
