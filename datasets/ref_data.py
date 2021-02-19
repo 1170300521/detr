@@ -187,7 +187,7 @@ def collater(batch):
     for k in batch[0]:
         if k in ['sents', 'img']:
             out_dict[k] = [b[k] for b in batch]
-        elif k != 'img':
+        else:
             out_dict[k] = torch.stack([b[k] for b in batch]).float()
     out_dict['img'] = nested_tensor_from_tensor_list(out_dict['img'])
     # out_dict['qvec'] = out_dict['qvec'][:, :max_qlen]

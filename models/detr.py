@@ -9,7 +9,7 @@ from torch import nn
 from util import box_ops
 from util.misc import (NestedTensor, nested_tensor_from_tensor_list,
                        accuracy, get_world_size, interpolate,
-                       is_dist_avail_and_initialized)
+                       is_dist_avail_and_initialized, IoU_values)
 
 from .backbone import build_backbone
 from .matcher import build_matcher
@@ -103,6 +103,7 @@ class SetCriterion(nn.Module):
         self.weight_dict = weight_dict
         self.eos_coef = eos_coef
         self.losses = losses
+        self.threshold = 0.5
         empty_weight = torch.ones(self.num_classes + 1)
         empty_weight[-1] = self.eos_coef
         self.register_buffer('empty_weight', empty_weight)
@@ -141,6 +142,17 @@ class SetCriterion(nn.Module):
         card_err = F.l1_loss(card_pred.float(), tgt_lengths.float())
         losses = {'cardinality_error': card_err}
         return losses
+
+    @torch.no_grad()
+    def loss_accuracy(self, outputs, targets, indices, num_boxes):
+        """ Compute the accuracy """
+        pred_logits = outputs['pred_logits'][:, :, 0]  # '0' rep objects
+        _, ids = pred_logits.max(1)
+        results = PostProcess()(outputs, targets['orig_size'])
+        pred_boxes = torch.gather(results['boxes'], 1, ids.view(-1, 1, 1).expand(-1, 1, 4))
+        pred_boxes = pred_boxes.view(-1, 4)
+        ious = torch.diag(IoU_values(pred_boxes, targets['boxes']))
+        return (ious >= self.acc_iou_threshold).float().mean(), pred_boxes
 
     def loss_boxes(self, outputs, targets, indices, num_boxes):
         """Compute the losses related to the bounding boxes, the L1 regression loss and the GIoU loss
@@ -331,14 +343,14 @@ def build(args):
         num_queries=args.num_queries,
         aux_loss=args.aux_loss,
     )
-    if args.masks:
-        model = DETRsegm(model, freeze_detr=(args.frozen_weights is not None))
+#    if args.masks:
+#        model = DETRsegm(model, freeze_detr=(args.frozen_weights is not None))
     matcher = build_matcher(args)
     weight_dict = {'loss_ce': 1, 'loss_bbox': args.bbox_loss_coef}
     weight_dict['loss_giou'] = args.giou_loss_coef
-    if args.masks:
-        weight_dict["loss_mask"] = args.mask_loss_coef
-        weight_dict["loss_dice"] = args.dice_loss_coef
+#    if args.masks:
+#        weight_dict["loss_mask"] = args.mask_loss_coef
+#        weight_dict["loss_dice"] = args.dice_loss_coef
     # TODO this is a hack
     if args.aux_loss:
         aux_weight_dict = {}
@@ -346,17 +358,17 @@ def build(args):
             aux_weight_dict.update({k + f'_{i}': v for k, v in weight_dict.items()})
         weight_dict.update(aux_weight_dict)
 
-    losses = ['labels', 'boxes', 'cardinality']
-    if args.masks:
-        losses += ["masks"]
+    losses = ['labels', 'boxes', 'cardinality', 'accuracy']
+#    if args.masks:
+#        losses += ["masks"]
     criterion = SetCriterion(num_classes, matcher=matcher, weight_dict=weight_dict,
                              eos_coef=args.eos_coef, losses=losses)
     criterion.to(device)
     postprocessors = {'bbox': PostProcess()}
-    if args.masks:
-        postprocessors['segm'] = PostProcessSegm()
-        if args.dataset_file == "coco_panoptic":
-            is_thing_map = {i: i <= 90 for i in range(201)}
-            postprocessors["panoptic"] = PostProcessPanoptic(is_thing_map, threshold=0.85)
+#    if args.masks:
+#        postprocessors['segm'] = PostProcessSegm()
+#        if args.dataset_file == "coco_panoptic":
+#            is_thing_map = {i: i <= 90 for i in range(201)}
+#            postprocessors["panoptic"] = PostProcessPanoptic(is_thing_map, threshold=0.85)
 
     return model, criterion, postprocessors

@@ -465,3 +465,36 @@ def interpolate(input, size=None, scale_factor=None, mode="nearest", align_corne
         return _new_empty_tensor(input, output_shape)
     else:
         return torchvision.ops.misc.interpolate(input, size, scale_factor, mode, align_corners)
+
+def tlbr2cthw(boxes):
+    "Convert top/left bottom/right format `boxes` to center/size corners."
+    center = (boxes[..., :2] + boxes[..., 2:])/2
+    sizes = boxes[..., 2:] - boxes[..., :2]
+    return torch.cat([center, sizes], dim=-1)
+
+def intersection(anchors, targets):
+    """
+    Compute the sizes of the intersections of `anchors` by `targets`.
+    Assume both anchors and targets are in tl br format
+    """
+    ancs, tgts = anchors, targets
+    a, t = ancs.size(0), tgts.size(0)
+    ancs, tgts = ancs.unsqueeze(1).expand(
+        a, t, 4), tgts.unsqueeze(0).expand(a, t, 4)
+    top_left_i = torch.max(ancs[..., :2], tgts[..., :2])
+    bot_right_i = torch.min(ancs[..., 2:], tgts[..., 2:])
+
+    sizes = torch.clamp(bot_right_i - top_left_i, min=0)
+    return sizes[..., 0] * sizes[..., 1]
+
+def IoU_values(anchors, targets):
+    """
+    Compute the IoU values of `anchors` by `targets`.
+    Expects both in tlbr format
+    """
+    inter = intersection(anchors, targets)
+    ancs, tgts = tlbr2cthw(anchors), tlbr2cthw(targets)
+    anc_sz, tgt_sz = ancs[:, 2] * \
+        ancs[:, 3], tgts[:, 2] * tgts[:, 3]
+    union = anc_sz.unsqueeze(1) + tgt_sz.unsqueeze(0) - inter
+    return inter/(union+1e-8)
