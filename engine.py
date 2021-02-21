@@ -26,10 +26,10 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     print_freq = 10
 
     for targets in metric_logger.log_every(data_loader, print_freq, header):
-        samples = targets['img'].to(device)
-        targets = [{k: v.to(device) if k not in ['sents'] else v for k, v in t.items()} for t in targets]
+        targets = {k: v.to(device) if k not in ['sents'] else v for k, v in targets.items()}
+        samples = targets['img']
 
-        outputs = model(samples)
+        outputs = model(samples, targets['qvec'])
         loss_dict = criterion(outputs, targets)
         weight_dict = criterion.weight_dict
         losses = sum(loss_dict[k] * weight_dict[k] for k in loss_dict.keys() if k in weight_dict)
@@ -65,7 +65,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
 
 
 @torch.no_grad()
-def evaluate(model, criterion, postprocessors, data_loader, base_ds, device, output_dir):
+def evaluate(model, criterion, postprocessors, data_loader, device, output_dir):
     model.eval()
     criterion.eval()
 
@@ -86,10 +86,9 @@ def evaluate(model, criterion, postprocessors, data_loader, base_ds, device, out
 #        )
 
     for targets in metric_logger.log_every(data_loader, 10, header):
-        samples = targets['img'].to(device)
-        targets = [{k: v.to(device) if k not in {'sents'} else v for k, v in t.items()} for t in targets]
-
-        outputs = model(samples)
+        targets = {k: v.to(device) if k not in ['sents'] else v for k, v in targets.items()}
+        samples = targets['img']
+        outputs = model(samples, targets['qvec'])
         loss_dict = criterion(outputs, targets)
         weight_dict = criterion.weight_dict
 
@@ -110,7 +109,7 @@ def evaluate(model, criterion, postprocessors, data_loader, base_ds, device, out
 #        if 'segm' in postprocessors.keys():
 #            target_sizes = torch.stack([t["size"] for t in targets], dim=0)
 #            results = postprocessors['segm'](results, outputs, orig_target_sizes, target_sizes)
-        res = {target['image_id'].item(): output for target, output in zip(targets, results)}
+        # res = {target['image_id'].item(): output for target, output in zip(targets, results)}
 #        if coco_evaluator is not None:
 #            coco_evaluator.update(res)
 #

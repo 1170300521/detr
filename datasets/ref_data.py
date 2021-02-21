@@ -19,7 +19,7 @@ from torchvision import transforms
 import spacy
 import cv2
 
-from util.misc import nested_tensor_from_tensor_list
+from util.misc import nested_tensor_from_tensor_list, tlbr2cthw
 # from extended_config import cfg as conf
 
 
@@ -79,7 +79,7 @@ class ImgQuDataset(Dataset):
         # self.image_data = self.image_data.iloc[:200]
         self.img_dir = Path(self.cfg.ds_info[self.ds_name]['img_dir'])
         # self.phrase_len = cfg.phrase_len
-        self.phrase_len = 100  # keep the same as detr
+        self.phrase_len = cfg.num_queries  # keep the same as detr
         self.item_getter = getattr(self, 'simple_item_getter')
         self.transform = T.Compose([
             T.ToTensor(),
@@ -114,15 +114,21 @@ class ImgQuDataset(Dataset):
         # qlen = len(q_chosen_emb_vecs)
         # Annot is in x1y1x2y2 format
         target = np.array(annot)
+        center = (target[..., :2] + target[..., 2:])/2
+        sizes = target[..., 2:] - target[..., :2]
+        cthw = np.concatenate([center, sizes], axis=-1)
+        cthw[0::2] /= w
+        cthw[1::2] /= h
         img = self.transform(img)
 
         out = {
             'img': img,
             'idxs': torch.tensor(idx).long(),
-            'qvec': torch.from_numpy(q_chosen_emb_vecs),
+            'qvec': torch.from_numpy(q_chosen_emb_vecs).float(),
             'qlens': torch.tensor(qlen),
             'boxes': torch.from_numpy(target).float(),
-            'labels': torch.tensor([0], dtype=torch.int64),
+            'cthw': torch.from_numpy(cthw).float(),
+            'labels': torch.tensor([0], dtype=torch.long),
             'orig_size': torch.tensor([h, w]),
             'size': torch.tensor([h, w]),
             'sents': sents,
@@ -188,7 +194,7 @@ def collater(batch):
         if k in ['sents', 'img']:
             out_dict[k] = [b[k] for b in batch]
         else:
-            out_dict[k] = torch.stack([b[k] for b in batch]).float()
+            out_dict[k] = torch.stack([b[k] for b in batch])
     out_dict['img'] = nested_tensor_from_tensor_list(out_dict['img'])
     # out_dict['qvec'] = out_dict['qvec'][:, :max_qlen]
 

@@ -5,6 +5,7 @@ import json
 import random
 import time
 import os
+import os.path as osp
 # from pathlib import Path
 
 import numpy as np
@@ -184,25 +185,26 @@ def main(args):
                 args.resume, map_location='cpu', check_hash=True)
         else:
             checkpoint = torch.load(args.resume, map_location='cpu')
-        model_without_ddp.load_state_dict(checkpoint['model'])
+        model_without_ddp.load_state_dict(checkpoint['model'], strict=False)
         if not args.eval and 'optimizer' in checkpoint and 'lr_scheduler' in checkpoint and 'epoch' in checkpoint:
             optimizer.load_state_dict(checkpoint['optimizer'])
-            lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
+            lr_scheduler.load_state_dict(checkpoint['lr_scheduler'], strict=False)
             args.start_epoch = checkpoint['epoch'] + 1
 
 #    if args.eval:
 #        test_stats, coco_evaluator = evaluate(model, criterion, postprocessors,
 #                                              data_loader_val, base_ds, device, args.output_dir)
-        if args.output_dir:
-            utils.save_on_master(coco_evaluator.coco_eval["bbox"].eval, output_dir / "eval.pth")
-        return
+#        if args.output_dir:
+#            utils.save_on_master(coco_evaluator.coco_eval["bbox"].eval, output_dir / "eval.pth")
+#        return
     
     if args.eval:
-        test_stats = evaluate(model, criterion, postprocessor, data_loader_val, device, args.output_dir)
-        utils.save_on_master(coco_evaluator.coco_eval["bbox"].eval, output_dir / "eval.pth")
+        test_stats = evaluate(model, criterion, postprocessors, data_loader_val, device, args.output_dir)
+        # utils.save_on_master(coco_evaluator.coco_eval["bbox"].eval, output_dir / "eval.pth")
         return
 
     print("Start training")
+    output_dir = args.output_dir
     start_time = time.time()
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
@@ -212,10 +214,10 @@ def main(args):
             args.clip_max_norm)
         lr_scheduler.step()
         if args.output_dir:
-            checkpoint_paths = [output_dir / 'checkpoint.pth']
+            checkpoint_paths = [osp.join(output_dir,  'checkpoint.pth')]
             # extra checkpoint before LR drop and every 100 epochs
             if (epoch + 1) % args.lr_drop == 0 or (epoch + 1) % 100 == 0:
-                checkpoint_paths.append(output_dir / f'checkpoint{epoch:04}.pth')
+                checkpoint_paths.append(osp.join(output_dir ,f'checkpoint{epoch:04}.pth'))
             for checkpoint_path in checkpoint_paths:
                 utils.save_on_master({
                     'model': model_without_ddp.state_dict(),
@@ -235,19 +237,19 @@ def main(args):
                      'n_parameters': n_parameters}
 
         if args.output_dir and utils.is_main_process():
-            with (output_dir / "log.txt").open("a") as f:
+            with open(osp.join(output_dir,"log.txt"), "a") as f:
                 f.write(json.dumps(log_stats) + "\n")
 
             # for evaluation logs
-            if coco_evaluator is not None:
-                (output_dir / 'eval').mkdir(exist_ok=True)
-                if "bbox" in coco_evaluator.coco_eval:
-                    filenames = ['latest.pth']
-                    if epoch % 50 == 0:
-                        filenames.append(f'{epoch:03}.pth')
-                    for name in filenames:
-                        torch.save(coco_evaluator.coco_eval["bbox"].eval,
-                                   output_dir / "eval" / name)
+#            if coco_evaluator is not None:
+#                (output_dir / 'eval').mkdir(exist_ok=True)
+#                if "bbox" in coco_evaluator.coco_eval:
+#                    filenames = ['latest.pth']
+#                    if epoch % 50 == 0:
+#                        filenames.append(f'{epoch:03}.pth')
+#                    for name in filenames:
+#                        torch.save(coco_evaluator.coco_eval["bbox"].eval,
+#                                   output_dir / "eval" / name)
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
