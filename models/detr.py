@@ -20,7 +20,7 @@ from .transformer import build_transformer
 
 class DETR(nn.Module):
     """ This is the DETR module that performs object detection """
-    def __init__(self, backbone, transformer, num_classes, num_queries, aux_loss=False):
+    def __init__(self, backbone, transformer, num_classes, num_queries, aux_loss=False, query_pos='learn'):
         """ Initializes the model.
         Parameters:
             backbone: torch module of the backbone to be used. See backbone.py
@@ -37,11 +37,15 @@ class DETR(nn.Module):
         self.class_emb = nn.Linear(hidden_dim, num_classes + 1)
         self.bbox_embed = MLP(hidden_dim, hidden_dim, 4, 3)
         # self.query_embed = nn.Embedding(num_queries, hidden_dim)
-        self.query_emb = nn.Linear(300, hidden_dim)
+        self.query_proj = nn.Linear(300, hidden_dim)
         self.input_proj = nn.Conv2d(backbone.num_channels, hidden_dim, kernel_size=1)
         self.backbone = backbone
         self.aux_loss = aux_loss
-
+        if query_pos == 'learn':
+            self.query_pos = nn.Embedding(num_queries, hidden_dim)
+        else:
+            self.query_pos = None
+    
     def forward(self, samples: NestedTensor, word_emb):
         """ The forward expects a NestedTensor, which consists of:
                - samples.tensor: batched images, of shape [batch_size x 3 x H x W]
@@ -63,8 +67,8 @@ class DETR(nn.Module):
 
         src, mask = features[-1].decompose()
         assert mask is not None
-        query = self.query_emb(word_emb)
-        hs = self.transformer(self.input_proj(src), mask, query, pos[-1])[0]
+        query = self.query_proj(word_emb)
+        hs = self.transformer(query, self.input_proj(src), mask, self.query_pos.weight, pos[-1])[0]
 
         outputs_class = self.class_emb(hs)
         outputs_coord = self.bbox_embed(hs).sigmoid()
