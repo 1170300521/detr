@@ -16,11 +16,12 @@ from .matcher import build_matcher
 from .segmentation import (DETRsegm, PostProcessPanoptic, PostProcessSegm,
                            dice_loss, sigmoid_focal_loss)
 from .transformer import build_transformer
+from .position_encoding import WordPositionEmbeddingSine
 
 
 class DETR(nn.Module):
     """ This is the DETR module that performs object detection """
-    def __init__(self, backbone, transformer, num_classes, num_queries, aux_loss=False, query_pos='learn'):
+    def __init__(self, backbone, transformer, num_classes, num_queries, aux_loss=False, query_pos='learned'):
         """ Initializes the model.
         Parameters:
             backbone: torch module of the backbone to be used. See backbone.py
@@ -41,8 +42,10 @@ class DETR(nn.Module):
         self.input_proj = nn.Conv2d(backbone.num_channels, hidden_dim, kernel_size=1)
         self.backbone = backbone
         self.aux_loss = aux_loss
-        if query_pos == 'learn':
+        if query_pos == 'learned':
             self.query_pos = nn.Embedding(num_queries, hidden_dim)
+        elif query_pos == 'sine':
+            self.query_pos = WordPositionEmbeddingSine(num_queries, hidden_dim)
         else:
             self.query_pos = None
     
@@ -68,7 +71,8 @@ class DETR(nn.Module):
         src, mask = features[-1].decompose()
         assert mask is not None
         query = self.query_proj(word_emb)
-        hs = self.transformer(query, self.input_proj(src), mask, self.query_pos.weight, pos[-1])[0]
+        query_pos = self.query_pos.weight if self.query_pos is not None else None
+        hs = self.transformer(query, self.input_proj(src), mask, query_pos, pos[-1])[0]
 
         outputs_class = self.class_emb(hs)
         outputs_coord = self.bbox_embed(hs).sigmoid()
@@ -349,6 +353,7 @@ def build(args):
         num_classes=num_classes,
         num_queries=args.num_queries,
         aux_loss=args.aux_loss,
+        query_pos=args.query_pos,
     )
 #    if args.masks:
 #        model = DETRsegm(model, freeze_detr=(args.frozen_weights is not None))

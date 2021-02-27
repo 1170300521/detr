@@ -3,6 +3,7 @@
 Various positional encodings for the transformer.
 """
 import math
+import numpy as np
 import torch
 from torch import nn
 
@@ -76,6 +77,26 @@ class PositionEmbeddingLearned(nn.Module):
         return pos
 
 
+class WordPositionEmbeddingSine(nn.Module):
+    """
+    Standard version of the position embedding, the same as the one used by the paper '
+    Attenion is all you need'.
+    """
+    def __init__(self, nums_queries=50, hidden_dim=256, temperature=10000):
+        super(WordPositionEmbeddingSine, self).__init__()
+
+        # Not a parameter
+        self.register_buffer('weight', self._get_sinusoid_encoding_table(nums_queries, hidden_dim, temperature))
+
+    def _get_sinusoid_encoding_table(self, n_position, d_hid, temp):
+        ''' Sinusoid position encoding table '''
+        def get_position_angle_vec(position):
+            return [position / np.power(temp, 2 * (hid_j // 2)/ d_hid) for hid_j in range(d_hid)]
+        sinusoid_table = np.array([get_position_angle_vec(pos_i) for pos_i in range(n_position)])
+        sinusoid_table[:, 0::2] = np.sin(sinusoid_table[:, 0::2])  # dim 2i
+        sinusoid_table[:, 1::2] = np.cos(sinusoid_table[:, 1::2])  # dim 2i+1
+        return torch.FloatTensor(sinusoid_table)
+
 def build_position_encoding(args):
     N_steps = args.hidden_dim // 2
     if args.position_embedding in ('v2', 'sine'):
@@ -87,3 +108,4 @@ def build_position_encoding(args):
         raise ValueError(f"not supported {args.position_embedding}")
 
     return position_embedding
+

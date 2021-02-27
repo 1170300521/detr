@@ -42,6 +42,8 @@ def get_args_parser():
                         help="If true, we replace stride with dilation in the last convolutional block (DC5)")
     parser.add_argument('--position_embedding', default='sine', type=str, choices=('sine', 'learned'),
                         help="Type of positional embedding to use on top of the image features")
+    parser.add_argument('--query_pos', default=None, type=str, choices=('sine', 'learned'),
+                        help="Type of positional embedding to use on attention of words query")
 
     # * Transformer
     parser.add_argument('--enc_layers', default=6, type=int,
