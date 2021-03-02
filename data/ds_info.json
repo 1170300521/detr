@@ -31,8 +31,8 @@
     },
     "refcocog": {
 	"data_dir": "./data/refcocog",
-	"img_dir": "./data/refcoco/images/",
-	"trn_cv_file": "./data/refcocog/csv_dir/train_flat.csv",
+	"img_dir": "./data/refcocog/images/",
+	"trn_csv_file": "./data/refcocog/csv_dir/train_flat.csv",
 	"val_csv_file": "./data/refcocog/csv_dir/val.csv",
 	"test_csv_file": "./data/refcocog/csv_dir/val.csv"
     },
