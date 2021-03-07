@@ -111,6 +111,10 @@ def get_args_parser():
     parser.add_argument('--world_size', default=1, type=int,
                         help='number of distributed processes')
     parser.add_argument('--dist_url', default='env://', help='url used to set up distributed training')
+
+    # attention visualization parameters
+    parser.add_argument('--visualize_dir', default=None, type=str,
+                        help='output directory of attention map, if None, there is not')
     return parser
 
 
@@ -201,7 +205,11 @@ def main(args):
 #        return
     
     if args.eval:
-        test_stats = evaluate(model, criterion, postprocessors, data_loader_val, device, args.output_dir)
+        if args.visualize_dir and utils.is_main_process():
+            args.visualize_dir = os.path.join(args.output_dir, args.visualize_dir)
+            if not os.path.exists(args.visualize_dir):
+                os.makedirs(args.visualize_dir)
+        test_stats = evaluate(model, criterion, postprocessors, data_loader_val, device, args.output_dir, visualize_dir=args.visualize_dir)
         # utils.save_on_master(coco_evaluator.coco_eval["bbox"].eval, output_dir / "eval.pth")
         return
 
@@ -262,6 +270,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser('DETR training and evaluation script', parents=[get_args_parser()])
     args = parser.parse_args()
     args.output_dir = os.path.join(args.output_dir, args.ds_name, args.lab_name)
-    if not os.path.exists(args.output_dir):
+    if utils.is_main_process() and not os.path.exists(args.output_dir):
         os.makedirs(args.output_dir)
     main(args)

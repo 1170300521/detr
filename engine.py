@@ -10,6 +10,7 @@ from typing import Iterable
 import torch
 
 import util.misc as utils
+from util.visualize import save_visualize
 from datasets.coco_eval import CocoEvaluator
 from datasets.panoptic_eval import PanopticEvaluator
 
@@ -65,7 +66,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
 
 
 @torch.no_grad()
-def evaluate(model, criterion, postprocessors, data_loader, device, output_dir):
+def evaluate(model, criterion, postprocessors, data_loader, device, output_dir, visualize_dir=None):
     model.eval()
     criterion.eval()
 
@@ -88,7 +89,12 @@ def evaluate(model, criterion, postprocessors, data_loader, device, output_dir):
     for targets in metric_logger.log_every(data_loader, 10, header):
         targets = {k: v.to(device) if k not in ['sents'] else v for k, v in targets.items()}
         samples = targets['img']
-        outputs = model(samples, targets['qvec'])
+        outputs = model(samples, targets['qvec'], visualize=visualize_dir is not None)
+        if visualize_dir is not None and utils.is_main_process():
+            outputs['sents'] = targets['sents']
+            outputs['ids'] = targets['idxs'].tolist()
+            outputs['img'] = targets['img'].decompose()[0].cpu().tolist()
+            save_visualize(outputs, visualize_dir)
         loss_dict = criterion(outputs, targets)
         weight_dict = criterion.weight_dict
 

@@ -49,7 +49,7 @@ class DETR(nn.Module):
         else:
             self.query_pos = None
     
-    def forward(self, samples: NestedTensor, word_emb):
+    def forward(self, samples: NestedTensor, word_emb, visualize=False):
         """ The forward expects a NestedTensor, which consists of:
                - samples.tensor: batched images, of shape [batch_size x 3 x H x W]
                - samples.mask: a binary mask of shape [batch_size x H x W], containing 1 on padded pixels
@@ -67,18 +67,22 @@ class DETR(nn.Module):
         if isinstance(samples, (list, torch.Tensor)):
             samples = nested_tensor_from_tensor_list(samples)
         features, pos = self.backbone(samples)
-
         src, mask = features[-1].decompose()
+        _, _, h, w = src.shape
         assert mask is not None
         query = self.query_proj(word_emb)
         query_pos = self.query_pos.weight if self.query_pos is not None else None
-        hs = self.transformer(query, self.input_proj(src), mask, query_pos, pos[-1])[0]
-
+        visual_dict = self.transformer(query, self.input_proj(src), mask, query_pos, pos[-1])[0]
+        hs = visual_dict['hs']
         outputs_class = self.class_emb(hs)
         outputs_coord = self.bbox_embed(hs).sigmoid()
         out = {'pred_logits': outputs_class[-1], 'pred_boxes': outputs_coord[-1]}
         if self.aux_loss:
             out['aux_outputs'] = self._set_aux_loss(outputs_class, outputs_coord)
+        if visualize:
+            out['self_att'] = visual_dict['self_att'].cpu().detach().transpose(0, 1).tolist()  # NxBxLxS -> BxNxLxS
+            out['cross_att'] = visual_dict['cross_att'].cpu().detach().transpose(0, 1).tolist()
+            out['size'] = [h, w]
         return out
 
     @torch.jit.unused
