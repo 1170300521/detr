@@ -164,7 +164,9 @@ class SetCriterion(nn.Module):
         pred_boxes = torch.gather(results, 1, ids.view(-1, 1, 1).expand(-1, 1, 4))
         pred_boxes = pred_boxes.view(-1, 4)
         ious = torch.diag(IoU_values(pred_boxes, targets['boxes']))
-        return {"accuracy": (ious >= self.acc_iou_threshold).float().mean()}
+        return {
+            "accuracy": (ious >= self.acc_iou_threshold).float().mean(),
+        }
 
     def loss_boxes(self, outputs, targets, indices, num_boxes):
         """Compute the losses related to the bounding boxes, the L1 regression loss and the GIoU loss
