@@ -49,7 +49,7 @@ class DETR(nn.Module):
         else:
             self.query_pos = None
     
-    def forward(self, samples: NestedTensor, word_emb, visualize=False):
+    def forward(self, samples: NestedTensor, word_emb: NestedTensor, visualize=False):
         """ The forward expects a NestedTensor, which consists of:
                - samples.tensor: batched images, of shape [batch_size x 3 x H x W]
                - samples.mask: a binary mask of shape [batch_size x H x W], containing 1 on padded pixels
@@ -70,9 +70,13 @@ class DETR(nn.Module):
         src, mask = features[-1].decompose()
         _, _, h, w = src.shape
         assert mask is not None
-        query = self.query_proj(word_emb)
+        query, lang_mask = word_emb.decompose()
+        query = self.query_proj(query)
+        # lang_mask = F.interpolate(lang_mask[None].float(), size=query.shape[-1:]).to(torch.bool)[0]
         query_pos = self.query_pos.weight if self.query_pos is not None else None
-        visual_dict = self.transformer(query, self.input_proj(src), mask, query_pos, pos[-1])[0]
+        b, l, w = query.shape
+        query_pos = query_pos[:l]
+        visual_dict = self.transformer(query, self.input_proj(src), mask, query_pos, pos[-1], lang_mask)[0]
         hs = visual_dict['hs']
         outputs_class = self.class_emb(hs)
         outputs_coord = self.bbox_embed(hs).sigmoid()

@@ -323,6 +323,20 @@ def nested_tensor_from_tensor_list(tensor_list: List[Tensor]):
         for img, pad_img, m in zip(tensor_list, tensor, mask):
             pad_img[: img.shape[0], : img.shape[1], : img.shape[2]].copy_(img)
             m[: img.shape[1], :img.shape[2]] = False
+    elif tensor_list[0].ndim == 2:
+        if torchvision._is_tracing():
+            return _onnx_nested_tensor_from_tensor_list(tensor_list)
+        max_size = _max_by_axis([list(sent.shape) for sent in tensor_list])
+        batch_shape = [len(tensor_list)] + max_size
+        b, l, c = batch_shape
+        dtype = tensor_list[0].dtype
+        device = tensor_list[0].device
+        tensor = torch.zeros(batch_shape, dtype=dtype, device=device)
+        mask = torch.ones((b, l), dtype=torch.bool, device=device)
+        for sent, pad_sent, m in zip(tensor_list, tensor, mask):
+            pad_sent[: sent.shape[0], : sent.shape[1]].copy_(sent)
+            m[: sent.shape[0]] = False
+        
     else:
         raise ValueError('not supported')
     return NestedTensor(tensor, mask)
@@ -346,11 +360,18 @@ def _onnx_nested_tensor_from_tensor_list(tensor_list: List[Tensor]) -> NestedTen
     padded_masks = []
     for img in tensor_list:
         padding = [(s1 - s2) for s1, s2 in zip(max_size, tuple(img.shape))]
-        padded_img = torch.nn.functional.pad(img, (0, padding[2], 0, padding[1], 0, padding[0]))
+        if len(padding) == 3:
+            padded_img = torch.nn.functional.pad(img, (0, padding[2], 0, padding[1], 0, padding[0]))
+        else:
+            padded_img = torch.nn.functional.pad(img, (0, padding[1], 0, padding[0]))
         padded_imgs.append(padded_img)
 
         m = torch.zeros_like(img[0], dtype=torch.int, device=img.device)
-        padded_mask = torch.nn.functional.pad(m, (0, padding[2], 0, padding[1]), "constant", 1)
+        # padding images
+        if len(padding) == 3:
+            padded_mask = torch.nn.functional.pad(m, (0, padding[2], 0, padding[1]), "constant", 1)
+        else:
+            padded_mask = torch.nn.functional.pad(m, (0, padding[0]), "constant", 1) 
         padded_masks.append(padded_mask.to(torch.bool))
 
     tensor = torch.stack(padded_imgs)

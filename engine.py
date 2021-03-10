@@ -87,6 +87,7 @@ def evaluate(model, criterion, postprocessors, data_loader, device, output_dir, 
 #        )
 
     for targets in metric_logger.log_every(data_loader, 10, header):
+        print(targets['sents'])
         targets = {k: v.to(device) if k not in ['sents'] else v for k, v in targets.items()}
         samples = targets['img']
         outputs = model(samples, targets['qvec'], visualize=visualize_dir is not None)

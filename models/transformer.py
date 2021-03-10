@@ -17,7 +17,7 @@ from torch import nn, Tensor
 
 class Transformer(nn.Module):
 
-    def __init__(self, d_model=512, nhead=8, num_encoder_layers=6,
+    def __init__(self, d_model=512, nhead=8, num_encoder_layers=6, num_lang_encoder_layers=2,
                  num_decoder_layers=6, dim_feedforward=2048, dropout=0.1,
                  activation="relu", normalize_before=False,
                  return_intermediate_dec=False):
@@ -27,11 +27,13 @@ class Transformer(nn.Module):
                                                 dropout, activation, normalize_before)
         encoder_norm = nn.LayerNorm(d_model) if normalize_before else None
         self.encoder = TransformerEncoder(encoder_layer, num_encoder_layers, encoder_norm)
+        self.lang_encoder = TransformerEncoder(encoder_layer, num_lang_encoder_layers, encoder_norm) \
+            if num_lang_encoder_layers > 0 else None
 
         decoder_layer = TransformerDecoderLayer(d_model, nhead, dim_feedforward,
                                                 dropout, activation, normalize_before)
         decoder_norm = nn.LayerNorm(d_model)
-        self.decoder = TransformerDecoder(decoder_layer, num_decoder_layers, decoder_norm,
+        self.reason_decoder = TransformerDecoder(decoder_layer, num_decoder_layers, decoder_norm,
                                           return_intermediate=return_intermediate_dec)
 
         self._reset_parameters()
@@ -44,7 +46,7 @@ class Transformer(nn.Module):
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
 
-    def forward(self, tgt, src, mask, query_embed, pos_embed):
+    def forward(self, tgt, src, mask, query_embed, pos_embed, lang_mask):
         # flatten NxCxHxW to HWxNxC
         bs, c, h, w = src.shape
         src = src.flatten(2).permute(2, 0, 1)
@@ -56,8 +58,10 @@ class Transformer(nn.Module):
 
         # tgt = torch.zeros_like(query_embed)
         memory = self.encoder(src, src_key_padding_mask=mask, pos=pos_embed)
-        hs, self_att, cross_att = self.decoder(tgt, memory, memory_key_padding_mask=mask,
-                          pos=pos_embed, query_pos=query_embed)
+        tgt = self.lang_encoder(tgt, src_key_padding_mask=lang_mask, pos=query_embed) \
+            if self.lang_encoder is not None else tgt
+        hs, self_att, cross_att = self.reason_decoder(tgt, memory, memory_key_padding_mask=mask,
+                          tgt_key_padding_mask=lang_mask, pos=pos_embed, query_pos=query_embed)
 
         visual_dict = {
             'hs': hs.transpose(1, 2),

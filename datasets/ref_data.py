@@ -105,7 +105,7 @@ class ImgQuDataset(Dataset):
             # logger.error('Empty string provided')
             raise NotImplementedError
         qlen = min(len(qtmp), self.phrase_len)
-        q_chosen = q_chosen + ' PD'*(self.phrase_len - qlen)
+        # q_chosen = q_chosen + ' PD'*(self.phrase_len - qlen)
         q_chosen_emb = nlp(q_chosen)
         if not len(q_chosen_emb) == self.phrase_len:
             q_chosen_emb = q_chosen_emb[:self.phrase_len]
@@ -191,11 +191,12 @@ def collater(batch):
     # query_vecs = [torch.Tensor(i['query'][:max_qlen]) for i in batch]
     out_dict = {}
     for k in batch[0]:
-        if k in ['sents', 'img']:
+        if k in ['sents', 'img', 'qvec']:
             out_dict[k] = [b[k] for b in batch]
         else:
             out_dict[k] = torch.stack([b[k] for b in batch])
     out_dict['img'] = nested_tensor_from_tensor_list(out_dict['img'])
+    out_dict['qvec'] = nested_tensor_from_tensor_list(out_dict['qvec'])
     # out_dict['qvec'] = out_dict['qvec'][:, :max_qlen]
 
     return out_dict
