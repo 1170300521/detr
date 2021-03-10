@@ -5,6 +5,7 @@ Modules to compute the matching cost and solve the corresponding LSAP.
 import torch
 from scipy.optimize import linear_sum_assignment
 from torch import nn
+import torch.nn.functional as F
 
 from util.box_ops import box_cxcywh_to_xyxy, generalized_box_iou
 
@@ -85,5 +86,33 @@ class HungarianMatcher(nn.Module):
         return [(torch.as_tensor(i, dtype=torch.int64), torch.as_tensor(j, dtype=torch.int64)) for i, j in indices]
 
 
+class MaxMatcher(nn.Module):
+    """ This class computes the index with maximum scores
+    """
+
+    @torch.no_grad()
+    def forward(self, outputs, targets):
+       pred_logits = F.softmax(outputs['pred_logits'], dim=2)[:, :, 0]
+       _, mask = targets['qvec'].decompose()
+       mask = (~mask).float()
+       pred_logits = mask * pred_logits
+       _, ids = pred_logits.max(1)
+       ids = ids.cpu()
+       return [(torch.as_tensor([i], dtype=torch.int64), torch.as_tensor([0], dtype=torch.int64)) for i in ids]
+
+class FirstMatcher(nn.Module):
+    """ This class return the first index as prediction
+    """
+
+    @torch.no_grad()
+    def forward(self, outputs, targets):
+        bs = outputs['pred_logits'].size(0)
+        return [(torch.as_tensor([0], dtype=torch.int64), torch.as_tensor([0], dtype=torch.int64)) for i in range(bs)]
+
 def build_matcher(args):
-    return HungarianMatcher(cost_class=args.set_cost_class, cost_bbox=args.set_cost_bbox, cost_giou=args.set_cost_giou)
+    if args.matcher == 'hungarian':
+        return HungarianMatcher(cost_class=args.set_cost_class, cost_bbox=args.set_cost_bbox, cost_giou=args.set_cost_giou)
+    elif args.matcher == 'max':
+        return MaxMatcher()
+    else:
+        return FirstMatcher()

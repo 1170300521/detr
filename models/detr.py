@@ -162,9 +162,11 @@ class SetCriterion(nn.Module):
     @torch.no_grad()
     def loss_accuracy(self, outputs, targets, indices, num_boxes):
         """ Compute the accuracy """
-        pred_logits = outputs['pred_logits'][:, :, 0]  # '0' rep objects
-        _, ids = pred_logits.max(1)
+        # pred_logits = outputs['pred_logits'][:, :, 0]  # '0' rep objects
+        # _, ids = pred_logits.max(1)
+        ids = torch.stack([i[0] for (i, _) in indices])
         results = PostProcess()(outputs, targets['orig_size'])
+        ids = ids.to(results.device)
         pred_boxes = torch.gather(results, 1, ids.view(-1, 1, 1).expand(-1, 1, 4))
         pred_boxes = pred_boxes.view(-1, 4)
         ious = torch.diag(IoU_values(pred_boxes, targets['boxes']))
