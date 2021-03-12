@@ -93,9 +93,9 @@ class MaxMatcher(nn.Module):
     @torch.no_grad()
     def forward(self, outputs, targets):
        pred_logits = F.softmax(outputs['pred_logits'], dim=2)[:, :, 0]
-       _, mask = targets['qvec'].decompose()
-       mask = (~mask).float()
-       pred_logits = mask * pred_logits
+#       _, mask = targets['qvec'].decompose()
+#       mask = (~mask).float()
+#       pred_logits = mask * pred_logits
        _, ids = pred_logits.max(1)
        ids = ids.cpu()
        return [(torch.as_tensor([i], dtype=torch.int64), torch.as_tensor([0], dtype=torch.int64)) for i in ids]
