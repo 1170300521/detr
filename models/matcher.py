@@ -106,7 +106,7 @@ class FirstMatcher(nn.Module):
 
     @torch.no_grad()
     def forward(self, outputs, targets):
-        bs = outputs['pred_logits'].size(0)
+        bs = outputs['pred_boxes'].size(0)
         return [(torch.as_tensor([0], dtype=torch.int64), torch.as_tensor([0], dtype=torch.int64)) for i in range(bs)]
 
 def build_matcher(args):

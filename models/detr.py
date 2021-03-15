@@ -21,7 +21,8 @@ from .position_encoding import WordPositionEmbeddingSine
 
 class DETR(nn.Module):
     """ This is the DETR module that performs object detection """
-    def __init__(self, backbone, transformer, num_classes, num_queries, aux_loss=False, query_pos='learned'):
+    def __init__(self, backbone, transformer, num_classes, num_queries, aux_loss=False, 
+                 query_pos='learned', matcher='first'):
         """ Initializes the model.
         Parameters:
             backbone: torch module of the backbone to be used. See backbone.py
@@ -35,7 +36,7 @@ class DETR(nn.Module):
         self.num_queries = num_queries
         self.transformer = transformer
         hidden_dim = transformer.d_model
-        self.class_emb = nn.Linear(hidden_dim, num_classes + 1)
+        self.class_emb = nn.Linear(hidden_dim, num_classes + 1) if matcher != 'first' else None
         self.bbox_embed = MLP(hidden_dim, hidden_dim, 4, 3)
         # self.query_embed = nn.Embedding(num_queries, hidden_dim)
         self.query_proj = nn.Linear(300, hidden_dim)
@@ -78,8 +79,8 @@ class DETR(nn.Module):
         query_pos = query_pos[:l]
         visual_dict = self.transformer(query, self.input_proj(src), mask, query_pos, pos[-1], lang_mask)[0]
         hs = visual_dict['hs']
-        outputs_class = self.class_emb(hs)
         outputs_coord = self.bbox_embed(hs).sigmoid()
+        outputs_class = self.class_emb(hs) if self.class_emb is not None else outputs_coord 
         out = {'pred_logits': outputs_class[-1], 'pred_boxes': outputs_coord[-1]}
         if self.aux_loss:
             out['aux_outputs'] = self._set_aux_loss(outputs_class, outputs_coord)
@@ -382,7 +383,11 @@ def build(args):
             aux_weight_dict.update({k + f'_{i}': v for k, v in weight_dict.items()})
         weight_dict.update(aux_weight_dict)
 
-    losses = ['labels', 'boxes', 'cardinality', 'accuracy']
+    if args.matcher == 'first':
+        # we only need the first output, so ignore labels and cardinality
+        losses = ['boxes', 'accuracy']
+    else:
+        losses = ['labels', 'boxes', 'cardinality', 'accuracy']
 #    if args.masks:
 #        losses += ["masks"]
     criterion = SetCriterion(num_classes, matcher=matcher, weight_dict=weight_dict,
