@@ -71,7 +71,7 @@ def evaluate(model, criterion, postprocessors, data_loader, device, output_dir, 
     criterion.eval()
 
     metric_logger = utils.MetricLogger(delimiter="  ")
-    metric_logger.add_meter('class_error', utils.SmoothedValue(window_size=1, fmt='{value:.2f}'))
+#    metric_logger.add_meter('class_error', utils.SmoothedValue(window_size=1, fmt='{value:.2f}'))
     header = 'Test:'
 
     iou_types = tuple(k for k in ('segm', 'bbox') if k in postprocessors.keys())
@@ -108,7 +108,7 @@ def evaluate(model, criterion, postprocessors, data_loader, device, output_dir, 
         metric_logger.update(loss=sum(loss_dict_reduced_scaled.values()),
                              **loss_dict_reduced_scaled,
                              **loss_dict_reduced_unscaled)
-        metric_logger.update(class_error=loss_dict_reduced['class_error'])
+#        metric_logger.update(class_error=loss_dict_reduced['class_error'])
 
         # orig_target_sizes = torch.stack([t["orig_size"] for t in targets], dim=0)
         orig_target_sizes = targets['orig_size']
