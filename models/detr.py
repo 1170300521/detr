@@ -367,6 +367,7 @@ def build(args):
         num_queries=args.num_queries,
         aux_loss=args.aux_loss,
         query_pos=args.query_pos,
+        matcher=args.matcher
     )
 #    if args.masks:
 #        model = DETRsegm(model, freeze_detr=(args.frozen_weights is not None))

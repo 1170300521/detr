@@ -106,6 +106,7 @@ class ImgQuDataset(Dataset):
             raise NotImplementedError
         qlen = min(len(qtmp), self.phrase_len)
         # q_chosen = q_chosen + ' PD'*(self.phrase_len - qlen)
+        q_chosen = 'ANS ' + q_chosen
         q_chosen_emb = nlp(q_chosen)
         if not len(q_chosen_emb) == self.phrase_len:
             q_chosen_emb = q_chosen_emb[:self.phrase_len]
