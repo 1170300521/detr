@@ -6,6 +6,7 @@ import random
 import time
 import os
 import os.path as osp
+import pickle
 # from pathlib import Path
 
 import numpy as np
@@ -63,6 +64,8 @@ def get_args_parser():
     parser.add_argument('--num_queries', default=100, type=int,
                         help="Number of query slots")
     parser.add_argument('--pre_norm', action='store_true')
+    parser.add_argument('--deepvit', action='store_true',
+                        help="Wether to use re-attention to prevent rank collapse")
 
     # * Segmentation
     parser.add_argument('--masks', action='store_true',
@@ -229,8 +232,8 @@ def main(args):
         lr_scheduler.step()
         if args.output_dir:
             checkpoint_paths = [osp.join(output_dir,  'checkpoint.pth')]
-            # extra checkpoint before LR drop and every 100 epochs
-            if (epoch + 1) % args.lr_drop == 0 or (epoch + 1) % 100 == 0:
+            # extra checkpoint before LR drop and every 10 epochs
+            if (epoch + 1) % args.lr_drop == 0 or (epoch + 1) % 10 == 0:
                 checkpoint_paths.append(osp.join(output_dir ,f'checkpoint{epoch:04}.pth'))
             for checkpoint_path in checkpoint_paths:
                 utils.save_on_master({

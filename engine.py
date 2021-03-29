@@ -6,6 +6,7 @@ import math
 import os
 import sys
 from typing import Iterable
+import pickle
 
 import torch
 
@@ -13,6 +14,7 @@ import util.misc as utils
 from util.visualize import save_visualize
 from datasets.coco_eval import CocoEvaluator
 from datasets.panoptic_eval import PanopticEvaluator
+from models import detr
 
 
 def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
@@ -87,7 +89,7 @@ def evaluate(model, criterion, postprocessors, data_loader, device, output_dir, 
 #        )
 
     for targets in metric_logger.log_every(data_loader, 10, header):
-        print(targets['sents'])
+        # print(targets['sents'])
         targets = {k: v.to(device) if k not in ['sents'] else v for k, v in targets.items()}
         samples = targets['img']
         outputs = model(samples, targets['qvec'], visualize=visualize_dir is not None)
@@ -113,6 +115,14 @@ def evaluate(model, criterion, postprocessors, data_loader, device, output_dir, 
         # orig_target_sizes = torch.stack([t["orig_size"] for t in targets], dim=0)
         orig_target_sizes = targets['orig_size']
         results = postprocessors['bbox'](outputs, orig_target_sizes)
+
+    # save ious
+    iou_filename = os.path.join(output_dir, 'iou.pl')
+    with open(iou_filename, 'wb') as f:
+        pickle.dump({
+            'correct': detr.CORRECT_IOUS,
+            'wrong': detr.WRONG_IOUS
+        }, f)
 #        if 'segm' in postprocessors.keys():
 #            target_sizes = torch.stack([t["size"] for t in targets], dim=0)
 #            results = postprocessors['segm'](results, outputs, orig_target_sizes, target_sizes)

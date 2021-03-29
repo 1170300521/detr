@@ -19,6 +19,10 @@ from .transformer import build_transformer
 from .position_encoding import WordPositionEmbeddingSine
 
 
+CORRECT_IOUS = []
+WRONG_IOUS = []
+
+
 class DETR(nn.Module):
     """ This is the DETR module that performs object detection """
     def __init__(self, backbone, transformer, num_classes, num_queries, aux_loss=False, 
@@ -171,6 +175,8 @@ class SetCriterion(nn.Module):
         pred_boxes = torch.gather(results, 1, ids.view(-1, 1, 1).expand(-1, 1, 4))
         pred_boxes = pred_boxes.view(-1, 4)
         ious = torch.diag(IoU_values(pred_boxes, targets['boxes']))
+        CORRECT_IOUS.extend(ious[ious >= self.acc_iou_threshold].tolist())
+        WRONG_IOUS.extend(ious[ious < self.acc_iou_threshold].tolist())
         return {
             "accuracy": (ious >= self.acc_iou_threshold).float().mean(),
         }
