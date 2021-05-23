@@ -23,8 +23,8 @@ from util.misc import nested_tensor_from_tensor_list, tlbr2cthw
 # from extended_config import cfg as conf
 
 
-#nlp = spacy.load('en_vectors_web_lg')
-nlp = spacy.load('en_core_web_md')
+nlp = spacy.load('en_core_web_lg')
+# nlp = spacy.load('en_core_web_md')
 
 
 class NewDistributedSampler(DistributedSampler):

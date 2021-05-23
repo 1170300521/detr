@@ -26,7 +26,7 @@ WRONG_IOUS = []
 class DETR(nn.Module):
     """ This is the DETR module that performs object detection """
     def __init__(self, backbone, transformer, num_classes, num_queries, aux_loss=False, 
-                 query_pos='learned', matcher='first'):
+                 query_pos='sine', matcher='hungarian'):
         """ Initializes the model.
         Parameters:
             backbone: torch module of the backbone to be used. See backbone.py
@@ -373,7 +373,7 @@ def build(args):
         num_queries=args.num_queries,
         aux_loss=args.aux_loss,
         query_pos=args.query_pos,
-        matcher=args.matcher
+        matcher=args.matcher,
     )
 #    if args.masks:
 #        model = DETRsegm(model, freeze_detr=(args.frozen_weights is not None))

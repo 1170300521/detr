@@ -24,13 +24,13 @@ class Transformer(nn.Module):
                  activation="relu", normalize_before=False,
                  return_intermediate_dec=False, cross_encoder=False):
         super().__init__()
-
+        self.cross_encoder = cross_encoder
         encoder_layer = TransformerEncoderLayer(d_model, nhead, dim_feedforward,
                                                 dropout, activation, normalize_before)
         encoder_norm = nn.LayerNorm(d_model) if normalize_before else None
         self.encoder = TransformerEncoder(encoder_layer, num_encoder_layers, encoder_norm)
         self.lang_encoder = TransformerEncoder(encoder_layer, num_lang_encoder_layers, encoder_norm) \
-            if num_lang_encoder_layers > 0 else None
+            if num_lang_encoder_layers > 0 and not cross_encoder else None
 
         decoder_layer = TransformerDecoderLayer(d_model, nhead, dim_feedforward,
                                                 dropout, activation, normalize_before)
@@ -48,29 +48,42 @@ class Transformer(nn.Module):
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
 
-    def forward(self, tgt, src, mask, query_embed, pos_embed, lang_mask):
-        # flatten NxCxHxW to HWxNxC
+    def forward(self, tgt, src, img_mask, query_embed, img_embed, lang_mask):
+        # Reshape NxCxHxW to HWxNxC
         bs, c, h, w = src.shape
         src = src.flatten(2).permute(2, 0, 1)
-        pos_embed = pos_embed.flatten(2).permute(2, 0, 1)
+        img_embed = img_embed.flatten(2).permute(2, 0, 1)
         query_embed = query_embed.unsqueeze(1).repeat(1, bs, 1)
-        #query_embed = query_embed.transpose(0, 1).contiguous()
         tgt = tgt.transpose(0, 1).contiguous()
-        mask = mask.flatten(1)
+        img_mask = img_mask.flatten(1)
 
-        # tgt = torch.zeros_like(query_embed)
-        memory = self.encoder(src, src_key_padding_mask=mask, pos=pos_embed)
+        # Encode image feature or cross-modal feature
+        # Cross modal
+        if self.cross_encoder:
+            src = torch.cat([src, tgt], dim=0)
+            mask = torch.cat([img_mask, lang_mask], dim=1)
+            pos = torch.cat([img_embed, query_embed], dim=0)
+        else:
+            # Image only
+            mask = img_mask
+            pos = img_embed
+        memory = self.encoder(src, src_key_padding_mask=img_mask, pos=img_embed)
+        
+        if self.cross_encoder:
+            # Use alined image and language feature
+            tgt = memory[h*w :]
+            memory = memory[0:h*w]
+            
         tgt = self.lang_encoder(tgt, src_key_padding_mask=lang_mask, pos=query_embed) \
             if self.lang_encoder is not None else tgt
-        hs, self_att, cross_att = self.reason_decoder(tgt, memory, memory_key_padding_mask=mask,
-                          tgt_key_padding_mask=lang_mask, pos=pos_embed, query_pos=query_embed)
+        hs, self_att, cross_att = self.reason_decoder(tgt, memory, memory_key_padding_mask=img_mask,
+                          tgt_key_padding_mask=lang_mask, pos=img_embed, query_pos=query_embed)
 
         visual_dict = {
             'hs': hs.transpose(1, 2),
             'self_att': self_att,
             'cross_att': cross_att,
         }
-        # return hs.transpose(1, 2), memory.permute(1, 2, 0).view(bs, c, h, w)
         return visual_dict, memory.permute(1, 2, 0).view(bs, c, h, w)
 
 
@@ -302,6 +315,7 @@ def build_transformer(args):
         num_decoder_layers=args.dec_layers,
         normalize_before=args.pre_norm,
         return_intermediate_dec=True,
+        cross_encoder=args.cross_encoder,
     )
 
 
