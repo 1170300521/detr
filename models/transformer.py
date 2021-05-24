@@ -67,7 +67,7 @@ class Transformer(nn.Module):
             # Image only
             mask = img_mask
             pos = img_embed
-        memory = self.encoder(src, src_key_padding_mask=img_mask, pos=img_embed)
+        memory = self.encoder(src, src_key_padding_mask=mask, pos=pos)
         
         if self.cross_encoder:
             # Use alined image and language feature
