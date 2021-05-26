@@ -62,16 +62,16 @@ class Transformer(nn.Module):
         if self.cross_encoder:
             src = torch.cat([src, tgt], dim=0)
             mask = torch.cat([img_mask, lang_mask], dim=1)
-            pos = torch.cat([img_embed, query_embed], dim=0)
+            # pos = torch.cat([img_embed, query_embed], dim=0)
+            pos = torch.cat([img_embed, torch.zeros_like(query_embed)], dim=0)
         else:
             # Image only
             mask = img_mask
             pos = img_embed
         memory = self.encoder(src, src_key_padding_mask=mask, pos=pos)
-        
         if self.cross_encoder:
             # Use alined image and language feature
-            tgt = memory[h*w :]
+            # tgt = memory[h*w:]
             memory = memory[0:h*w]
             
         tgt = self.lang_encoder(tgt, src_key_padding_mask=lang_mask, pos=query_embed) \

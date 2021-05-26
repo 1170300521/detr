@@ -24,7 +24,7 @@ from models import build_model
 
 def get_args_parser():
     parser = argparse.ArgumentParser('Set transformer detector', add_help=False)
-    parser.add_argument('--lr', default=5e-4, type=float)
+    parser.add_argument('--lr', default=1e-4, type=float)
     parser.add_argument('--lr_backbone', default=1e-5, type=float)
     parser.add_argument('--batch_size', default=18, type=int)
     parser.add_argument('--weight_decay', default=1e-4, type=float)
@@ -64,7 +64,7 @@ def get_args_parser():
     parser.add_argument('--num_queries', default=100, type=int,
                         help="Number of query slots")
     parser.add_argument('--pre_norm', action='store_true')
-    parser.add_argument('--cross_encoder', default=False, type=bool,
+    parser.add_argument('--cross_encoder', default=False, action='store_true',
                         help="Whether to use cross modal encoder or not")
     
     # * Segmentation
@@ -193,6 +193,7 @@ def main(args):
         model_without_ddp.detr.load_state_dict(checkpoint['model'])
 
     if args.resume:
+        print("Use resume :", args.resume)
         if args.resume.startswith('https'):
             checkpoint = torch.hub.load_state_dict_from_url(
                 args.resume, map_location='cpu', check_hash=True)
@@ -256,17 +257,6 @@ def main(args):
         if args.output_dir and utils.is_main_process():
             with open(osp.join(output_dir,"log.txt"), "a") as f:
                 f.write(json.dumps(log_stats) + "\n")
-
-            # for evaluation logs
-#            if coco_evaluator is not None:
-#                (output_dir / 'eval').mkdir(exist_ok=True)
-#                if "bbox" in coco_evaluator.coco_eval:
-#                    filenames = ['latest.pth']
-#                    if epoch % 50 == 0:
-#                        filenames.append(f'{epoch:03}.pth')
-#                    for name in filenames:
-#                        torch.save(coco_evaluator.coco_eval["bbox"].eval,
-#                                   output_dir / "eval" / name)
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
