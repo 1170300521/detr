@@ -51,7 +51,7 @@ def get_args_parser():
                         help="Number of encoding layers in the transformer")
     parser.add_argument('--enc_lang_layers', default=0, type=int,
                         help="Number of language encoding in the transformer")
-    parser.add_argument('--dec_layers', default=4, type=int,
+    parser.add_argument('--dec_layers', default=6, type=int,
                         help="Number of decoding layers in the transformer")
     parser.add_argument('--dim_feedforward', default=2048, type=int,
                         help="Intermediate size of the feedforward layers in the transformer blocks")
@@ -61,10 +61,10 @@ def get_args_parser():
                         help="Dropout applied in the transformer")
     parser.add_argument('--nheads', default=8, type=int,
                         help="Number of attention heads inside the transformer's attentions")
-    parser.add_argument('--num_queries', default=100, type=int,
-                        help="Number of query slots")
+    # parser.add_argument('--num_queries', default=100, type=int,
+    #                     help="Number of query slots")
     parser.add_argument('--pre_norm', action='store_true')
-    parser.add_argument('--cross_encoder', default=False, action='store_true',
+    parser.add_argument('--not_cross_encoder', action='store_true',
                         help="Whether to use cross modal encoder or not")
     
     # * Segmentation
@@ -84,8 +84,8 @@ def get_args_parser():
     parser.add_argument('--set_cost_giou', default=2, type=float,
                         help="giou box coefficient in the matching cost")
     # * Loss coefficients
-    parser.add_argument('--mask_loss_coef', default=1, type=float)
-    parser.add_argument('--dice_loss_coef', default=1, type=float)
+    # parser.add_argument('--mask_loss_coef', default=1, type=float)
+    # parser.add_argument('--dice_loss_coef', default=1, type=float)
     parser.add_argument('--bbox_loss_coef', default=5, type=float)
     parser.add_argument('--giou_loss_coef', default=2, type=float)
     parser.add_argument('--eos_coef', default=0.1, type=float,
@@ -97,9 +97,9 @@ def get_args_parser():
                         help="For REC task")
     parser.add_argument("--ds_info", default="data/ds_info.json",
                         help="filename of data config")
-    parser.add_argument('--coco_path', type=str)
-    parser.add_argument('--coco_panoptic_path', type=str)
-    parser.add_argument('--remove_difficult', action='store_true')
+    # parser.add_argument('--coco_path', type=str)
+    # parser.add_argument('--coco_panoptic_path', type=str)
+    # parser.add_argument('--remove_difficult', action='store_true')
 
     parser.add_argument('--output_dir', default='results',
                         help='path where to save, empty for no saving')
