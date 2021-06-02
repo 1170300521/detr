@@ -316,7 +316,7 @@ def build_transformer(args):
         num_decoder_layers=args.dec_layers,
         normalize_before=args.pre_norm,
         return_intermediate_dec=True,
-        cross_encoder=args.cross_encoder,
+        cross_encoder=not args.no_cross_encoder,
     )
 
 
