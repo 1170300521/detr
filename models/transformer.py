@@ -72,7 +72,7 @@ class Transformer(nn.Module):
         memory = self.encoder(src, src_key_padding_mask=mask, pos=pos)
         if self.cross_encoder:
             # Use alined image and language feature
-            # tgt = memory[h*w:]
+            tgt = memory[h*w:]
             memory = memory[0:h*w]
             
         tgt = self.lang_encoder(tgt, src_key_padding_mask=lang_mask, pos=query_embed) \
