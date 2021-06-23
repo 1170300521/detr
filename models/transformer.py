@@ -35,8 +35,10 @@ class Transformer(nn.Module):
         decoder_layer = TransformerDecoderLayer(d_model, nhead, dim_feedforward,
                                                 dropout, activation, normalize_before)
         decoder_norm = nn.LayerNorm(d_model)
-        self.reason_decoder = TransformerDecoder(decoder_layer, num_decoder_layers, decoder_norm,
+        self.decoder = TransformerDecoder(decoder_layer, num_decoder_layers, decoder_norm,
                                           return_intermediate=return_intermediate_dec)
+#        self.reason_decoder = TransformerDecoder(decoder_layer, num_decoder_layers, decoder_norm,
+#                                          return_intermediate=return_intermediate_dec)
 
         self._reset_parameters()
 
@@ -77,7 +79,7 @@ class Transformer(nn.Module):
             
         tgt = self.lang_encoder(tgt, src_key_padding_mask=lang_mask, pos=query_embed) \
             if self.lang_encoder is not None else tgt
-        hs, self_att, cross_att = self.reason_decoder(tgt, memory, memory_key_padding_mask=img_mask,
+        hs, self_att, cross_att = self.decoder(tgt, memory, memory_key_padding_mask=img_mask,
                           tgt_key_padding_mask=lang_mask, pos=img_embed, query_pos=query_embed)
 
         visual_dict = {

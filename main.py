@@ -45,6 +45,8 @@ def get_args_parser():
                         help="Type of positional embedding to use on top of the image features")
     parser.add_argument('--query_pos', default='sine', type=str, choices=('sine', 'learned'),
                         help="Type of positional embedding to use on attention of words query")
+    parser.add_argument('--yolo_path', default=None, type=str,
+                        help="Pretrained resnet backbone on yolov3")
 
     # * Transformer
     parser.add_argument('--enc_layers', default=6, type=int,
@@ -268,5 +270,5 @@ if __name__ == '__main__':
     args = parser.parse_args()
     args.output_dir = os.path.join(args.output_dir, args.ds_name, args.lab_name)
     if utils.is_main_process() and not os.path.exists(args.output_dir):
-        os.makedirs(args.output_dir)
+        os.makedirs(args.output_dir, exist_ok=True)
     main(args)
