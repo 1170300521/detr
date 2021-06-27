@@ -92,7 +92,7 @@ class Transformer(nn.Module):
             }
             return visual_dict, memory.permute(1, 2, 0).view(bs, c, h, w)
         else:
-            return tgt.permute(1, 2, 0).view(bs, c, -1), memory.permute(1, 2, 0).view(bs, c, h, w)
+            return tgt.permute(1, 0, 2).view(bs, -1, c), memory.permute(1, 2, 0).view(bs, c, h, w)
             
 
 

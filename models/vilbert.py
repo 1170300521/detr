@@ -38,7 +38,7 @@ ACT2FN = {"gelu": gelu, "relu": torch.nn.functional.relu, "swish": swish}
 try:
     from apex.normalization.fused_layer_norm import FusedLayerNorm as BertLayerNorm
 except ImportError:
-    logger.info(
+    print(
         "Better speed can be achieved with apex installed from https://www.github.com/nvidia/apex ."
     )
 
@@ -74,7 +74,7 @@ class BertPredictionHeadTransform(nn.Module):
 
 
 class BertLMPredictionHead(nn.Module):
-    def __init__(self, input_dim, class_num, activate='relu'):
+    def __init__(self, input_dim, class_num, activation='relu'):
         super(BertLMPredictionHead, self).__init__()
         self.transform = BertPredictionHeadTransform(input_dim, activation=activation)
 
@@ -85,7 +85,7 @@ class BertLMPredictionHead(nn.Module):
             class_num, 
             bias=False,
         )
-        self.bias = nn.Parameter(class_num)
+        self.bias = nn.Parameter(torch.FloatTensor(class_num))
 
     def forward(self, hidden_states):
         hidden_states = self.transform(hidden_states)

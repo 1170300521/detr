@@ -14,8 +14,6 @@ from util.misc import (NestedTensor, nested_tensor_from_tensor_list,
 
 from .backbone import build_backbone
 from .matcher import build_matcher
-from .segmentation import (DETRsegm, PostProcessPanoptic, PostProcessSegm,
-                           dice_loss, sigmoid_focal_loss)
 from .transformer import build_transformer
 from .position_encoding import WordPositionEmbeddingSine
 from .vilbert import BertLMPredictionHead
@@ -57,7 +55,10 @@ class DETR(nn.Module):
                 nn.ReLU(),
                 nn.Linear(hidden_dim//2, 2)
             )
-            self.text_pred = BertLMPredictionHead(hidden_dim, class_num=-1, activation='relu')
+            self.text_pred = BertLMPredictionHead(hidden_dim, class_num=684830, activation='relu')
+        else:
+            self.class_emb = nn.Linear(hidden_dim, num_classes + 1) if matcher != 'first' else None
+            self.bbox_embed = MLP(hidden_dim, hidden_dim, 4, 3)
         if query_pos == 'learned':
             self.query_pos = nn.Embedding(num_queries, hidden_dim)
         elif query_pos == 'sine':
@@ -106,8 +107,8 @@ class DETR(nn.Module):
                 out['size'] = [h, w]
         else:
             cross_lang = visual_dict
+            match_pred = self.match_pred(cross_lang[:, 0])
             text_pred = self.text_pred(cross_lang)
-            match_pred = self.match_pred(cross_lang[0])
             out = {
                 "text_pred": text_pred,
                 "match_pred": match_pred,
@@ -206,20 +207,20 @@ class SetCriterion(nn.Module):
     @torch.no_grad()
     def loss_mlm_acc(self, outputs, targets):
         text_pred = outputs['text_pred']
-        text_labels = outputs['text_labels']
-        B, T, _ = text_pred
+        text_labels = targets['text_labels']
+        B, T, _ = text_pred.shape
         text_pred = text_pred.view(B * T, -1)
         text_labels = text_labels.view(B * T)
         _, ids = text_pred.max(1)
         num_pred = (text_labels != -1).float().sum() + 1e-6
-        return (ids == text_labels).float() / num_pred
+        return {"mlm_acc": (ids == text_labels).float().sum() / num_pred}
 
     @torch.no_grad()
     def loss_match_acc(self, outputs, targets):
         match_pred = outputs['match_pred']
         is_match = targets['is_match']
         _, ids = match_pred.max(1)
-        return (ids == is_match).float().mean()        
+        return {"match_acc": (ids == is_match).float().mean()}        
 
     def loss_mlm(self, outputs, targets):
         text_pred = outputs['text_pred']
@@ -227,12 +228,13 @@ class SetCriterion(nn.Module):
         B, T, _ = text_pred.shape
         text_pred = text_pred.view(B * T, -1)
         text_labels = text_labels.view(B * T)
-        return F.cross_entropy(text_pred, text_labels, ignore_index=-1)
+        return {"loss_mlm": F.cross_entropy(text_pred + 1e-10, text_labels, ignore_index=-1)}
 
     def loss_match(self, outputs, targets):
-        match_pred = outputs['text_match']
-        is_match = targets['is_match']  # 0 reps match
-        return F.cross_entropy(match_pred, is_match)
+        match_pred = outputs['match_pred']
+        is_match = targets['is_match']
+        # 0 reps match
+        return {"loss_match": F.cross_entropy(match_pred, is_match)}
 
     def loss_boxes(self, outputs, targets, indices, num_boxes):
         """Compute the losses related to the bounding boxes, the L1 regression loss and the GIoU loss
@@ -339,7 +341,7 @@ class SetCriterion(nn.Module):
             num_boxes = torch.clamp(num_boxes / get_world_size(), min=1).item()
         # Compute all the requested losses
         for loss in self.losses:
-            losses.update(self.get_loss(loss, outputs, targets, indices, num_boxes))
+            losses.update(self.get_loss(loss, outputs_without_aux, targets, indices, num_boxes))
 
         # In case of auxiliary losses, we repeat this process with the output of each intermediate layer.
         if 'aux_outputs' in outputs:
@@ -462,8 +464,9 @@ def build(args):
             'loss_match': args.match_loss_coef,
         }
         losses = ['mlm', 'match', 'mlm_acc', 'match_acc']
-        criterion = SetCriterion(num_classes=-1, matcher=None, weight_dict=weight_dict,
-                                eos_coef=-1, losses=losses)
+        criterion = SetCriterion(num_classes=0, matcher=None, weight_dict=weight_dict,
+                                eos_coef=-1, losses=losses, is_pretrain=is_pretrain)
+        postprocessors = None
     criterion.to(device)
 
     return model, criterion, postprocessors

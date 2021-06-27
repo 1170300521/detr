@@ -31,7 +31,6 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     for targets in metric_logger.log_every(data_loader, print_freq, header):
         targets = {k: v.to(device) if k not in ['sents'] else v for k, v in targets.items()}
         samples = targets['img']
-
         outputs = model(samples, targets['qvec'])
         loss_dict = criterion(outputs, targets)
         weight_dict = criterion.weight_dict
@@ -113,8 +112,8 @@ def evaluate(model, criterion, postprocessors, data_loader, device, output_dir, 
 #        metric_logger.update(class_error=loss_dict_reduced['class_error'])
 
         # orig_target_sizes = torch.stack([t["orig_size"] for t in targets], dim=0)
-        orig_target_sizes = targets['orig_size']
-        results = postprocessors['bbox'](outputs, orig_target_sizes)
+        # orig_target_sizes = targets['orig_size']
+        # results = postprocessors['bbox'](outputs, orig_target_sizes)
 
     # save ious
     iou_filename = os.path.join(output_dir, 'iou.pl')
