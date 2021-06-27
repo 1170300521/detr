@@ -92,6 +92,10 @@ def get_args_parser():
     parser.add_argument('--giou_loss_coef', default=2, type=float)
     parser.add_argument('--eos_coef', default=0.1, type=float,
                         help="Relative classification weight of the no-object class")
+    parser.add_argument('--mlm_loss_coef', default=1, type=float,
+                        help="Mask language model loss weight for pretraining")
+    parser.add_argument('--match_loss_coef', default=1, type=float,
+                        help="whether image and text weight of loss")
 
     # dataset parameters
     # parser.add_argument('--dataset_file', default='coco')

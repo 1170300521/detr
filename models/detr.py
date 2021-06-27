@@ -5,6 +5,7 @@ DETR model and criterion classes.
 import torch
 import torch.nn.functional as F
 from torch import nn
+from torch.nn.modules import activation
 
 from util import box_ops
 from util.misc import (NestedTensor, nested_tensor_from_tensor_list,
@@ -17,6 +18,7 @@ from .segmentation import (DETRsegm, PostProcessPanoptic, PostProcessSegm,
                            dice_loss, sigmoid_focal_loss)
 from .transformer import build_transformer
 from .position_encoding import WordPositionEmbeddingSine
+from .vilbert import BertLMPredictionHead
 
 
 CORRECT_IOUS = []
@@ -26,7 +28,7 @@ WRONG_IOUS = []
 class DETR(nn.Module):
     """ This is the DETR module that performs object detection """
     def __init__(self, backbone, transformer, num_classes, num_queries, aux_loss=False, 
-                 query_pos='sine', matcher='hungarian'):
+                 query_pos='sine', matcher='hungarian', is_pretrain=False):
         """ Initializes the model.
         Parameters:
             backbone: torch module of the backbone to be used. See backbone.py
@@ -35,18 +37,27 @@ class DETR(nn.Module):
             num_queries: number of object queries, ie detection slot. This is the maximal number of objects
                          DETR can detect in a single image. For COCO, we recommend 100 queries.
             aux_loss: True if auxiliary decoding losses (loss at each decoder layer) are to be used.
+            query_pos: position encoding for language query
+            matcher: method of matching between gt and prediction bboxes
+            is_pretrain: whether to pretrain or not
         """
         super().__init__()
+        self.is_pretrain = is_pretrain
         self.num_queries = num_queries
         self.transformer = transformer
         hidden_dim = transformer.d_model
-        self.class_emb = nn.Linear(hidden_dim, num_classes + 1) if matcher != 'first' else None
-        self.bbox_embed = MLP(hidden_dim, hidden_dim, 4, 3)
         # self.query_embed = nn.Embedding(num_queries, hidden_dim)
         self.query_proj = nn.Linear(300, hidden_dim)
         self.input_proj = nn.Conv2d(backbone.num_channels, hidden_dim, kernel_size=1)
         self.backbone = backbone
-        self.aux_loss = aux_loss
+        self.aux_loss = aux_loss and not is_pretrain
+        if self.is_pretrain:
+            self.match_pred = nn.Sequential(
+                nn.Linear(hidden_dim, hidden_dim // 2),
+                nn.ReLU(),
+                nn.Linear(hidden_dim//2, 2)
+            )
+            self.text_pred = BertLMPredictionHead(hidden_dim, class_num=-1, activation='relu')
         if query_pos == 'learned':
             self.query_pos = nn.Embedding(num_queries, hidden_dim)
         elif query_pos == 'sine':
@@ -81,18 +92,28 @@ class DETR(nn.Module):
         query_pos = self.query_pos.weight if self.query_pos is not None else None
         b, l, w = query.shape
         query_pos = query_pos[:l]
-        visual_dict = self.transformer(query, self.input_proj(src), mask, query_pos, pos[-1], lang_mask)[0]
-        hs = visual_dict['hs']
-        outputs_coord = self.bbox_embed(hs).sigmoid()
-        outputs_class = self.class_emb(hs) if self.class_emb is not None else outputs_coord 
-        out = {'pred_logits': outputs_class[-1], 'pred_boxes': outputs_coord[-1]}
-        if self.aux_loss:
-            out['aux_outputs'] = self._set_aux_loss(outputs_class, outputs_coord)
-        if visualize:
-            out['self_att'] = visual_dict['self_att'].cpu().detach().transpose(0, 1).tolist()  # NxBxLxS -> BxNxLxS
-            out['cross_att'] = visual_dict['cross_att'].cpu().detach().transpose(0, 1).tolist()
-            out['size'] = [h, w]
+        visual_dict, cross_img = self.transformer(query, self.input_proj(src), mask, query_pos, pos[-1], lang_mask)
+        if not self.is_pretrain:
+            hs = visual_dict['hs']
+            outputs_coord = self.bbox_embed(hs).sigmoid()
+            outputs_class = self.class_emb(hs) if self.class_emb is not None else outputs_coord 
+            out = {'pred_logits': outputs_class[-1], 'pred_boxes': outputs_coord[-1]}
+            if self.aux_loss:
+                out['aux_outputs'] = self._set_aux_loss(outputs_class, outputs_coord)
+            if visualize:
+                out['self_att'] = visual_dict['self_att'].cpu().detach().transpose(0, 1).tolist()  # NxBxLxS -> BxNxLxS
+                out['cross_att'] = visual_dict['cross_att'].cpu().detach().transpose(0, 1).tolist()
+                out['size'] = [h, w]
+        else:
+            cross_lang = visual_dict
+            text_pred = self.text_pred(cross_lang)
+            match_pred = self.match_pred(cross_lang[0])
+            out = {
+                "text_pred": text_pred,
+                "match_pred": match_pred,
+            }
         return out
+
 
     @torch.jit.unused
     def _set_aux_loss(self, outputs_class, outputs_coord):
@@ -109,7 +130,7 @@ class SetCriterion(nn.Module):
         1) we compute hungarian assignment between ground truth boxes and the outputs of the model
         2) we supervise each pair of matched ground-truth / prediction (supervise class and box)
     """
-    def __init__(self, num_classes, matcher, weight_dict, eos_coef, losses):
+    def __init__(self, num_classes, matcher, weight_dict, eos_coef, losses, is_pretrain=False):
         """ Create the criterion.
         Parameters:
             num_classes: number of object categories, omitting the special no-object category
@@ -127,6 +148,7 @@ class SetCriterion(nn.Module):
         self.acc_iou_threshold = 0.5
         empty_weight = torch.ones(self.num_classes + 1)
         empty_weight[-1] = self.eos_coef
+        self.is_pretrain = is_pretrain
         self.register_buffer('empty_weight', empty_weight)
 
     def loss_labels(self, outputs, targets, indices, num_boxes, log=True):
@@ -180,6 +202,37 @@ class SetCriterion(nn.Module):
         return {
             "accuracy": (ious >= self.acc_iou_threshold).float().mean(),
         }
+
+    @torch.no_grad()
+    def loss_mlm_acc(self, outputs, targets):
+        text_pred = outputs['text_pred']
+        text_labels = outputs['text_labels']
+        B, T, _ = text_pred
+        text_pred = text_pred.view(B * T, -1)
+        text_labels = text_labels.view(B * T)
+        _, ids = text_pred.max(1)
+        num_pred = (text_labels != -1).float().sum() + 1e-6
+        return (ids == text_labels).float() / num_pred
+
+    @torch.no_grad()
+    def loss_match_acc(self, outputs, targets):
+        match_pred = outputs['match_pred']
+        is_match = targets['is_match']
+        _, ids = match_pred.max(1)
+        return (ids == is_match).float().mean()        
+
+    def loss_mlm(self, outputs, targets):
+        text_pred = outputs['text_pred']
+        text_labels = targets['text_labels']
+        B, T, _ = text_pred.shape
+        text_pred = text_pred.view(B * T, -1)
+        text_labels = text_labels.view(B * T)
+        return F.cross_entropy(text_pred, text_labels, ignore_index=-1)
+
+    def loss_match(self, outputs, targets):
+        match_pred = outputs['text_match']
+        is_match = targets['is_match']  # 0 reps match
+        return F.cross_entropy(match_pred, is_match)
 
     def loss_boxes(self, outputs, targets, indices, num_boxes):
         """Compute the losses related to the bounding boxes, the L1 regression loss and the GIoU loss
@@ -243,16 +296,24 @@ class SetCriterion(nn.Module):
         tgt_idx = torch.cat([tgt for (_, tgt) in indices])
         return batch_idx, tgt_idx
 
-    def get_loss(self, loss, outputs, targets, indices, num_boxes, **kwargs):
+    def get_loss(self, loss, outputs, targets, indices=None, num_boxes=None, **kwargs):
         loss_map = {
             'labels': self.loss_labels,
             'cardinality': self.loss_cardinality,
             'boxes': self.loss_boxes,
             'masks': self.loss_masks,
-            'accuracy': self.loss_accuracy
+            'accuracy': self.loss_accuracy,
+            'mlm': self.loss_mlm,
+            'match': self.loss_match,
+            'mlm_acc': self.loss_mlm_acc,
+            'match_acc': self.loss_match_acc
         }
         assert loss in loss_map, f'do you really want to compute {loss} loss?'
-        return loss_map[loss](outputs, targets, indices, num_boxes, **kwargs)
+        # Whether to pretrain model
+        if indices is not None:
+            return loss_map[loss](outputs, targets, indices, num_boxes, **kwargs)
+        else:
+            return loss_map[loss](outputs, targets)
 
     def forward(self, outputs, targets):
         """ This performs the loss computation.
@@ -262,20 +323,21 @@ class SetCriterion(nn.Module):
                       The expected keys in each dict depends on the losses applied, see each loss' doc
         """
         outputs_without_aux = {k: v for k, v in outputs.items() if k != 'aux_outputs'}
-
-        # Retrieve the matching between the outputs of the last layer and the targets
-        indices = self.matcher(outputs_without_aux, targets)
-
-        # Compute the average number of target boxes accross all nodes, for normalization purposes
-        num_boxes = sum(len(t) for t in targets['labels'])
-        # num_boxes = targets['boxes'].size(0)
-        num_boxes = torch.as_tensor([num_boxes], dtype=torch.float, device=next(iter(outputs.values())).device)
-        if is_dist_avail_and_initialized():
-            torch.distributed.all_reduce(num_boxes)
-        num_boxes = torch.clamp(num_boxes / get_world_size(), min=1).item()
-
-        # Compute all the requested losses
         losses = {}
+        indices = None
+        num_boxes = None
+        if not self.is_pretrain:
+            # Retrieve the matching between the outputs of the last layer and the targets
+            indices = self.matcher(outputs_without_aux, targets)
+
+            # Compute the average number of target boxes accross all nodes, for normalization purposes
+            num_boxes = sum(len(t) for t in targets['labels'])
+            # num_boxes = targets['boxes'].size(0)
+            num_boxes = torch.as_tensor([num_boxes], dtype=torch.float, device=next(iter(outputs.values())).device)
+            if is_dist_avail_and_initialized():
+                torch.distributed.all_reduce(num_boxes)
+            num_boxes = torch.clamp(num_boxes / get_world_size(), min=1).item()
+        # Compute all the requested losses
         for loss in self.losses:
             losses.update(self.get_loss(loss, outputs, targets, indices, num_boxes))
 
@@ -354,11 +416,7 @@ def build(args):
     # you should pass `num_classes` to be 2 (max_obj_id + 1).
     # For more details on this, check the following discussion
     # https://github.com/facebookresearch/detr/issues/108#issuecomment-650269223
-#    num_classes = 20 if args.dataset_file != 'coco' else 91
-#    if args.dataset_file == "coco_panoptic":
-#        # for panoptic, we just add a num_classes that is large enough to hold
-#        # max_obj_id + 1, but the exact value doesn't really matter
-#        num_classes = 250
+
     num_classes = 1
     device = torch.device(args.device)
 
@@ -374,37 +432,38 @@ def build(args):
         aux_loss=args.aux_loss,
         query_pos=args.query_pos,
         matcher=args.matcher,
+        is_pretrain=(args.ds_name == 'pretrain')
     )
-#    if args.masks:
-#        model = DETRsegm(model, freeze_detr=(args.frozen_weights is not None))
-    matcher = build_matcher(args)
-    weight_dict = {'loss_ce': 1, 'loss_bbox': args.bbox_loss_coef}
-    weight_dict['loss_giou'] = args.giou_loss_coef
-#    if args.masks:
-#        weight_dict["loss_mask"] = args.mask_loss_coef
-#        weight_dict["loss_dice"] = args.dice_loss_coef
-    # TODO this is a hack
-    if args.aux_loss:
-        aux_weight_dict = {}
-        for i in range(args.dec_layers - 1):
-            aux_weight_dict.update({k + f'_{i}': v for k, v in weight_dict.items()})
-        weight_dict.update(aux_weight_dict)
 
-    if args.matcher == 'first':
-        # we only need the first output, so ignore labels and cardinality
-        losses = ['boxes', 'accuracy']
+    is_pretrain = args.ds_name == 'pretrain'
+    if not is_pretrain:
+        matcher = build_matcher(args)
+        weight_dict = {'loss_ce': 1, 'loss_bbox': args.bbox_loss_coef}
+        weight_dict['loss_giou'] = args.giou_loss_coef
+        # TODO this is a hack
+        if args.aux_loss:
+            aux_weight_dict = {}
+            for i in range(args.dec_layers - 1):
+                aux_weight_dict.update({k + f'_{i}': v for k, v in weight_dict.items()})
+            weight_dict.update(aux_weight_dict)
+        
+        if args.matcher == 'first':
+            # we only need the first output, so ignore labels and cardinality
+            losses = ['boxes', 'accuracy']
+        else:
+            losses = ['labels', 'boxes', 'cardinality', 'accuracy']
+
+        criterion = SetCriterion(num_classes, matcher=matcher, weight_dict=weight_dict,
+                                eos_coef=args.eos_coef, losses=losses)
+        postprocessors = {'bbox': PostProcess()}
     else:
-        losses = ['labels', 'boxes', 'cardinality', 'accuracy']
-#    if args.masks:
-#        losses += ["masks"]
-    criterion = SetCriterion(num_classes, matcher=matcher, weight_dict=weight_dict,
-                             eos_coef=args.eos_coef, losses=losses)
+        weight_dict = {
+            'loss_mlm': args.mlm_loss_coef,
+            'loss_match': args.match_loss_coef,
+        }
+        losses = ['mlm', 'match', 'mlm_acc', 'match_acc']
+        criterion = SetCriterion(num_classes=-1, matcher=None, weight_dict=weight_dict,
+                                eos_coef=-1, losses=losses)
     criterion.to(device)
-    postprocessors = {'bbox': PostProcess()}
-#    if args.masks:
-#        postprocessors['segm'] = PostProcessSegm()
-#        if args.dataset_file == "coco_panoptic":
-#            is_thing_map = {i: i <= 90 for i in range(201)}
-#            postprocessors["panoptic"] = PostProcessPanoptic(is_thing_map, threshold=0.85)
 
     return model, criterion, postprocessors

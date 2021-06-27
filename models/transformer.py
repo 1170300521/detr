@@ -22,8 +22,9 @@ class Transformer(nn.Module):
     def __init__(self, d_model=512, nhead=8, num_encoder_layers=6, num_lang_encoder_layers=2,
                  num_decoder_layers=6, dim_feedforward=2048, dropout=0.1,
                  activation="relu", normalize_before=False,
-                 return_intermediate_dec=False, cross_encoder=False):
+                 return_intermediate_dec=False, cross_encoder=False, is_pretrain=False):
         super().__init__()
+        self.is_pretrain = is_pretrain
         self.cross_encoder = cross_encoder
         encoder_layer = TransformerEncoderLayer(d_model, nhead, dim_feedforward,
                                                 dropout, activation, normalize_before)
@@ -31,12 +32,13 @@ class Transformer(nn.Module):
         self.encoder = TransformerEncoder(encoder_layer, num_encoder_layers, encoder_norm)
         self.lang_encoder = TransformerEncoder(encoder_layer, num_lang_encoder_layers, encoder_norm) \
             if num_lang_encoder_layers > 0 and not cross_encoder else None
-
-        decoder_layer = TransformerDecoderLayer(d_model, nhead, dim_feedforward,
-                                                dropout, activation, normalize_before)
-        decoder_norm = nn.LayerNorm(d_model)
-        self.decoder = TransformerDecoder(decoder_layer, num_decoder_layers, decoder_norm,
-                                          return_intermediate=return_intermediate_dec)
+        if not self.is_pretrain:
+            decoder_layer = TransformerDecoderLayer(d_model, nhead, dim_feedforward,
+                                                    dropout, activation, normalize_before)
+            decoder_norm = nn.LayerNorm(d_model)
+            self.decoder = TransformerDecoder(decoder_layer, num_decoder_layers, decoder_norm,
+                                            return_intermediate=return_intermediate_dec)
+        
 #        self.reason_decoder = TransformerDecoder(decoder_layer, num_decoder_layers, decoder_norm,
 #                                          return_intermediate=return_intermediate_dec)
 
@@ -79,15 +81,19 @@ class Transformer(nn.Module):
             
         tgt = self.lang_encoder(tgt, src_key_padding_mask=lang_mask, pos=query_embed) \
             if self.lang_encoder is not None else tgt
-        hs, self_att, cross_att = self.decoder(tgt, memory, memory_key_padding_mask=img_mask,
-                          tgt_key_padding_mask=lang_mask, pos=img_embed, query_pos=query_embed)
+        if not self.is_pretrain:
+            hs, self_att, cross_att = self.decoder(tgt, memory, memory_key_padding_mask=img_mask,
+                            tgt_key_padding_mask=lang_mask, pos=img_embed, query_pos=query_embed)
 
-        visual_dict = {
-            'hs': hs.transpose(1, 2),
-            'self_att': self_att,
-            'cross_att': cross_att,
-        }
-        return visual_dict, memory.permute(1, 2, 0).view(bs, c, h, w)
+            visual_dict = {
+                'hs': hs.transpose(1, 2),
+                'self_att': self_att,
+                'cross_att': cross_att,
+            }
+            return visual_dict, memory.permute(1, 2, 0).view(bs, c, h, w)
+        else:
+            return tgt.permute(1, 2, 0).view(bs, c, -1), memory.permute(1, 2, 0).view(bs, c, h, w)
+            
 
 
 class TransformerEncoder(nn.Module):
@@ -319,6 +325,7 @@ def build_transformer(args):
         normalize_before=args.pre_norm,
         return_intermediate_dec=True,
         cross_encoder=not args.no_cross_encoder,
+        is_pretrain=(args.ds_name == 'pretrain')
     )
 
 
