@@ -228,7 +228,9 @@ class SetCriterion(nn.Module):
         B, T, _ = text_pred.shape
         text_pred = text_pred.view(B * T, -1)
         text_labels = text_labels.view(B * T)
-        return {"loss_mlm": F.cross_entropy(text_pred + 1e-10, text_labels, ignore_index=-1)}
+        loss = F.cross_entropy(text_pred + 1e-9, text_labels, ignore_index=-1)
+        torch.clip_(loss, min=1e-6, max=20)
+        return {"loss_mlm": loss}
 
     def loss_match(self, outputs, targets):
         match_pred = outputs['match_pred']

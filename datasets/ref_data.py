@@ -264,8 +264,12 @@ class PretrainDataset(Dataset):
         for words in query_words:
             q_chosen = q_chosen + ' ' + words
         q_chosen_emb = nlp(q_chosen.strip())
-        if not len(q_chosen_emb) == self.phrase_len:
-            q_chosen_emb = q_chosen_emb[:self.phrase_len]
+
+        min_len = min(len(mlm_labels), len(q_chosen_emb))
+#        if not len(q_chosen_emb) == self.phrase_len:
+#            q_chosen_emb = q_chosen_emb[:self.phrase_len]
+        mlm_labels = mlm_labels[0:min_len]
+        q_chosen_emb = q_chosen_emb[0:min_len]
 
         q_chosen_emb_vecs = np.array([q.vector for q in q_chosen_emb])
         
