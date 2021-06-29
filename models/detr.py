@@ -229,8 +229,6 @@ class SetCriterion(nn.Module):
         text_pred = text_pred.view(B * T, -1)
         text_labels = text_labels.view(B * T)
         loss = F.cross_entropy(text_pred + 1e-8, text_labels, ignore_index=-1)
-        loss = 0 * loss if loss > 20 else loss
-        print("MLM loss explode !!!")
         # torch.clip_(loss, min=1e-6, max=20)
         return {"loss_mlm": loss}
 

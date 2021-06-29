@@ -85,7 +85,7 @@ class BertLMPredictionHead(nn.Module):
             class_num, 
             bias=False,
         )
-        self.bias = nn.Parameter(torch.FloatTensor(class_num))
+        self.bias = nn.Parameter(torch.zeros(class_num))
 
     def forward(self, hidden_states):
         hidden_states = self.transform(hidden_states)
