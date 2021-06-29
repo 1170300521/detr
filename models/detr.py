@@ -55,7 +55,7 @@ class DETR(nn.Module):
                 nn.ReLU(),
                 nn.Linear(hidden_dim//2, 2)
             )
-            self.text_pred = BertLMPredictionHead(hidden_dim, class_num=684830, activation='relu')
+            self.text_pred = BertLMPredictionHead(hidden_dim, class_num=30522, activation='relu')
         else:
             self.class_emb = nn.Linear(hidden_dim, num_classes + 1) if matcher != 'first' else None
             self.bbox_embed = MLP(hidden_dim, hidden_dim, 4, 3)
@@ -228,8 +228,10 @@ class SetCriterion(nn.Module):
         B, T, _ = text_pred.shape
         text_pred = text_pred.view(B * T, -1)
         text_labels = text_labels.view(B * T)
-        loss = F.cross_entropy(text_pred + 1e-9, text_labels, ignore_index=-1)
-        torch.clip_(loss, min=1e-6, max=20)
+        loss = F.cross_entropy(text_pred + 1e-8, text_labels, ignore_index=-1)
+        loss = 0 * loss if loss > 20 else loss
+        print("MLM loss explode !!!")
+        # torch.clip_(loss, min=1e-6, max=20)
         return {"loss_mlm": loss}
 
     def loss_match(self, outputs, targets):

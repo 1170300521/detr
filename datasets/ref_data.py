@@ -20,13 +20,22 @@ import spacy
 import cv2
 import random
 from util.misc import nested_tensor_from_tensor_list, tlbr2cthw
+from transformers import BertTokenizer
 # from extended_config import cfg as conf
 
 
 nlp = spacy.load('en_core_web_lg')
-words_dict = nlp.vocab.vectors.key2row
+tokenizer = BertTokenizer(
+    vocab_file= "data/bert-clean.txt",
+    unk_token = "[UNK]",
+    sep_token = "[SEP]",
+    cls_token = "[CLS]",
+    pad_token  = "[PAD]",
+    mask_token = "[MASK]"
+)
+# words_dict = nlp.vocab.vectors.key2row
 # print(len(words_dict))
-vocab = nlp.vocab.strings
+vocab = list(tokenizer.vocab.keys())
 # nlp = spacy.load('en_core_web_md')
 
 
@@ -241,6 +250,8 @@ class PretrainDataset(Dataset):
         # print(q_chosen)
         for i in range(1, len(query_words)-1):
             prob = random.random()
+            # lemmatization to decrease [UNK]
+            select_word = nlp(query_words[i])[0].lemma_
             if prob < 0.15:
                 prob /= 0.15
                 # 80% randomly change token to mask token
@@ -252,11 +263,12 @@ class PretrainDataset(Dataset):
                     # remove compound word
                     word = nlp(str(word))[0].text
                     query_words[i] = word
-                token = qtmp[i]
-                if token.has_vector:
-                    mlm_labels.append(words_dict[token.norm])
-                else:
-                    mlm_labels.append(-1)
+                # token = qtmp[i]
+                mlm_labels.append(tokenizer.convert_tokens_to_ids(select_word))
+                # if token.has_vector:
+                #     mlm_labels.append(words_dict[token.norm])
+                # else:
+                #     mlm_labels.append(-1)
             else:
                 mlm_labels.append(-1)
         mlm_labels.append(-1)
